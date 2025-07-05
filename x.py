@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import sys
 
 # --- 定数設定 ---
-GEMINI_MODEL = "gemini-1.5-pro-latest"
+GEMINI_MODEL = "gemini-2.5-pro"
 POSTED_SLANGS_FILE = Path("posted_slangs.json")
 
 # --- 初期設定 ---
@@ -48,104 +48,145 @@ def setup_clients():
 
     return genai, x_client
 
-# --- スラング投稿生成 (Gemini) ---
-def generate_slang_post(gemini_client):
-    """Gemini APIを使用して、新しいスラングの投稿内容を生成する"""
-    print("Gemini APIにリクエストを送り、投稿内容を生成します...")
+# --- 投稿済みスラングの読み書きユーティリティ ---
 
-    # 過去に投稿したスラングを読み込む
+def load_posted_slangs():
+    """posted_slangs.json を読み込んでリストを返す。ファイルが無ければ空リスト。"""
     if POSTED_SLANGS_FILE.exists():
-        with open(POSTED_SLANGS_FILE, "r", encoding="utf-8") as f:
-            try:
-                posted_slangs = json.load(f)
-            except json.JSONDecodeError:
-                posted_slangs = [] # ファイルが空か壊れている場合
-    else:
-        posted_slangs = []
-    
-    # 過去の投稿を文字列としてプロンプトに含める
-    posted_slangs_str = json.dumps([item.get('slang', '') for item in posted_slangs], ensure_ascii=False)
+        try:
+            with open(POSTED_SLANGS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            # ファイルが壊れていた場合はバックアップして新しく作る
+            POSTED_SLANGS_FILE.rename(POSTED_SLANGS_FILE.with_suffix(".bak"))
+    return []
 
+
+def save_posted_slangs(slangs_list):
+    """投稿済みスラングのリストを JSON ファイルに保存する"""
+    with open(POSTED_SLANGS_FILE, "w", encoding="utf-8") as f:
+        json.dump(slangs_list, f, ensure_ascii=False, indent=2)
+
+# --- スラング投稿生成 (Gemini) ---
+
+def generate_tweet_content(existing_slangs):
+    """Gemini API を呼び出し、ツイート本文とスラング名を返す"""
+    print("Gemini APIにリクエストを送り、ツイート内容を生成します...")
+
+    existing_slangs_str = ", ".join(existing_slangs) if existing_slangs else "なし"
+    
     prompt = f"""
-    あなたはSNSで人気の、フレンドリーな英語学習コンテンツクリエイターです。
-    面白くて記憶に残りやすい英語のスラングを1つ選び、その紹介文を作成してください。
+    あなたは、英語学習者向けに「使えるスラング」を発信する、SNSで大人気のインフルエンサーです。
+    以下の要件とフォーマットに従って、新しいツイートを作成してください。
 
-    # 要件
-    - **絶対に、以下の「過去に投稿したスラング」リストにある単語は使わないでください。**
-    - スラング、その日本語の意味、そして使い方がよくわかる簡単な英語の例文と日本語訳を必ず含めてください。
-    - 全体の文章は、X(Twitter)の文字数制限（280文字）に収まるように、簡潔にまとめてください。
-    - 日本の英語学習者が興味を持つような、比較的新しいスラengや、知っていると面白い表現を選んでください。
-    - 文章のトーンは、絵文字(😁🎉など)を少し使って、明るく親しみやすい雰囲気にしてください。
-    - 最後に、必ず以下のハッシュタグを付けてください。
-      `#英語学習 #スラング #英会話 #今日の英語`
+    # 最重要要件
+    - 以下の「過去に投稿したスラング」とは絶対に重複しない、新しいスラングを1つだけ選んでください。
+      過去に投稿したスラング: {existing_slangs_str}
+    - 生成する内容は、以下の「出力フォーマット」を厳格に守ってください。見出しや絵文字、改行も完全に同じにしてください。
 
-    # 過去に投稿したスラング
-    {posted_slangs_str}
+    # その他の要件
+    - 日本の英語学習者が「面白い！」「使ってみたい！」と感じるような、キャッチーなスラングを選んでください。
+    - 解説は、単なる直訳ではなく、具体的なシーンや話し手の感情が伝わるように、生き生きとした言葉で記述してください。
+    - 例文は、AとBの短い会話形式にしてください。
+    - 全体を通して、親しみやすく、少しユーモアのあるトーンで書いてください。
 
-    # 出力形式 (必ずこのJSON形式で出力してください)
-    {{
-      "slang": "生成したスラング (例: 'spill the tea')",
-      "post_text": "実際にXに投稿する全文 (スラング、意味、例文、ハッシュタグをすべて含んだもの)"
-    }}
+    # 出力フォーマット (この形式を厳守してください)
+    【🇺🇸今日のスラング】
+    [スラング名]
+
+    意味：
+    「[スラングの意味を一言で]」って時に使う言葉です！
+
+    ニュアンス解説：
+    👉 [具体的な状況や感情、誰が使うかなどの詳しい解説]
+    👉 [もう一歩踏み込んだニュアンスや、似ている言葉との違いなど]
+
+    例文：
+    A: "[例文でのセリフA]"
+    B: "[例文でのセリフB]"
+
+    一言メモ：
+    [面白い豆知識や、使う際の注意点など、読者が「へぇ」と思うような短い情報]
+
+    #英語学習 #スラング #英会話 #TOEIC #TOEFL
     """
-    
+
     generation_config = genai.GenerationConfig(
-        temperature=1.2, 
-        response_mime_type="application/json",
+        temperature=1.0,
+        max_output_tokens=1024,
     )
-    model = gemini_client.GenerativeModel(
+    model = genai.GenerativeModel(
         GEMINI_MODEL,
-        generation_config=generation_config
+        generation_config=generation_config,
     )
 
     try:
         response = model.generate_content(prompt)
-        # JSON文字列をPythonの辞書に変換
-        generated_content = json.loads(response.text)
+        tweet_text = response.text.strip().replace("`", "")
         
-        # 新しいスラングを過去のリストに追加して保存
-        posted_slangs.append(generated_content)
-        with open(POSTED_SLANGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(posted_slangs, f, indent=2, ensure_ascii=False)
-        
-        print(f"新しいスラング「{generated_content['slang']}」を生成し、ローカルに保存しました。")
-        return generated_content['post_text']
+        # 生成されたテキストからスラング名を抽出
+        lines = tweet_text.split('\\n')
+        new_slang = None
+        if len(lines) > 1 and "【🇺🇸今日のスラング】" in lines[0]:
+            # 2行目をスラング名として抽出
+            new_slang = lines[1].strip()
+
+        if not new_slang:
+             print("警告: 生成されたテキストからスラング名を抽出できませんでした。")
+
+        return tweet_text, new_slang
 
     except Exception as e:
-        print(f"エラー: Geminiからの応答の解析、またはファイルの保存に失敗しました。")
-        print(f"詳細: {e}")
-        # Geminiからの生のレスポンスも表示してみる
-        if 'response' in locals() and hasattr(response, 'text'):
-            print(f"Geminiからの生レスポンス: {response.text}")
-        return None
+        print(f"エラー: Geminiからの応答の取得に失敗しました。エラー: {e}")
+        return None, None
 
 # --- Xへの投稿 ---
+
 def post_to_x(x_client, text_to_post):
-    """指定されたテキストをXに投稿する"""
+    """指定されたテキストをXに投稿し、成功可否をboolで返す"""
     print("Xへの投稿を実行します...")
     try:
         response = x_client.create_tweet(text=text_to_post)
-        print(f"ツイートが正常に投稿されました！ Tweet ID: {response.data['id']}")
-        print(f"URL: https://twitter.com/user/status/{response.data['id']}")
+        tweet_id = response.data.get("id") if response and response.data else None
+        if tweet_id:
+            print(f"ツイートが正常に投稿されました！ Tweet ID: {tweet_id}")
+            print(f"URL: https://twitter.com/user/status/{tweet_id}")
+            return True
     except tweepy.errors.TweepyException as e:
-        print(f"エラー: ツイートの投稿に失敗しました。")
+        print("エラー: ツイートの投稿に失敗しました。")
         print(f"詳細: {e}")
+    return False
 
 # --- メイン処理 ---
+
 def main():
     """メインの実行関数"""
-    print(f"--- X投稿ボットを開始します ({datetime.datetime.now()}) ---")
-    
-    gemini_client, x_client = setup_clients()
-    
-    post_content = generate_slang_post(gemini_client)
-    
-    if post_content:
-        post_to_x(x_client, post_content)
-    else:
-        print("投稿内容を生成できなかったため、スキップします。")
-        
-    print("--- 処理を終了します ---")
+    print("--- 処理を開始します ---")
+    try:
+        _genai_module, x_client = setup_clients()
+
+        # 1. 過去に投稿したスラングを読み込む
+        existing_slangs = load_posted_slangs()
+
+        # 2. 新しいスラングでツイートを生成
+        tweet_text, new_slang = generate_tweet_content(existing_slangs)
+        if not tweet_text:
+            print("ツイート内容が生成されませんでした。処理を終了します。")
+            return
+
+        # 3. Xに投稿
+        if post_to_x(x_client, tweet_text):
+            # 投稿成功
+            if new_slang:
+                existing_slangs.append(new_slang)
+                save_posted_slangs(existing_slangs)
+                print(f"スラング '{new_slang}' を履歴に追加しました。")
+            else:
+                print("警告: 新しいスラング名が取得できなかったため、履歴は更新されませんでした。")
+    except Exception as e:
+        print(f"予期せぬエラーが発生しました: {e}")
+    finally:
+        print("--- 処理を終了します ---")
 
 if __name__ == "__main__":
     # このファイルが直接実行された場合にmain()を呼び出す

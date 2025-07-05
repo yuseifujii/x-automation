@@ -14,7 +14,7 @@ from mutagen.mp3 import MP3
 
 # --- 定数設定 ---
 # APIモデル設定 (後から変更しやすいように)
-GEMINI_MODEL = "gemini-2.5-pro-preview-06-05" 
+GEMINI_MODEL = "gemini-2.5-pro" 
 TTS_MODEL = "gpt-4o-mini-tts"                
 TTS_VOICE = "ash"                 
 # ファイルパス設定
