@@ -1,0 +1,5 @@
+google-generativeai
+openai
+python-dotenv
+mutagen
+tweepy 
