@@ -110,7 +110,7 @@ def generate_tweet_content(existing_items):
     """
 
     generation_config = genai.GenerationConfig(
-        temperature=1.0,
+        temperature=1.5,
         max_output_tokens=1024,
     )
     safety_settings = [
