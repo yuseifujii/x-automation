@@ -12,10 +12,7 @@ on:
     # 20:00 JST = 11:00 UTC
     - cron: '0 22 * * *'
     - cron: '0 3 * * *'
-    - cron: '0 8 * * *'
-    - cron: '0 9 * * *'
     - cron: '0 10 * * *'
-    - cron: '0 11 * * *'
 
 jobs:
   tweet:
