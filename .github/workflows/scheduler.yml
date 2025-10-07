@@ -10,9 +10,9 @@ on:
     # 18:00 JST = 9:00 UTC
     # 19:00 JST = 10:00 UTC
     # 20:00 JST = 11:00 UTC
-    - cron: '0 22 * * *'
-    - cron: '0 3 * * *'
-    - cron: '0 10 * * *'
+    #- cron: '0 22 * * *'
+    #- cron: '0 3 * * *'
+    #- cron: '0 10 * * *'
 
 jobs:
   tweet:
